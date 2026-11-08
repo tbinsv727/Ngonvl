@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📸 Ngonvl - Chia Sẻ Ảnh & Video</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; color: white; margin-bottom: 30px; font-size: 1.8rem; }
+        
+        .upload-box { background: white; padding: 30px; border-radius: 16px; text-align: center; margin-bottom: 30px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+        #fileInput { display: none; }
+        .upload-btn { background: #667eea; color: white; padding: 14px 30px; border-radius: 8px; font-size: 17px; cursor: pointer; display: inline-block; transition: 0.3s; }
+        .upload-btn:hover { background: #5568d3; }
+        .hint { margin-top: 12px; color: #666; font-size: 14px; }
+        
+        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .item-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+        .item-card img, .item-card video { width: 100%; height: 200px; object-fit: cover; cursor: pointer; }
+        .item-info { padding: 15px; }
+        .link-box { display: flex; gap: 8px; margin-top: 10px; }
+        .link-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; }
+        .copy-btn { background: #28a745; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+        .copy-btn:active { background: #218838; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 999; align-items: center; justify-content: center; padding: 20px; }
+        .modal.show { display: flex; }
+        .modal-content { max-width: 100%; max-height: 85vh; position: relative; }
+        .modal-content img, .modal-content video { max-width: 100%; max-height: 70vh; border-radius: 8px; }
+        .close-btn { position: absolute; top: -40px; right: 0; background: white; color: #333; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 20px; cursor: pointer; }
+        .modal-link-area { margin-top: 15px; background: white; padding: 15px; border-radius: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+        
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 12px 24px; border-radius: 8px; opacity: 0; transition: opacity 0.3s; z-index: 1000; font-size: 15px; }
+        .toast.show { opacity: 1; }
+        
+        .empty { text-align: center; color: white; padding: 50px; font-size: 16px; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 NGONVL — Chia Sẻ Ảnh & Video</h1>
+        
+        <div class="upload-box">
+            <label for="fileInput" class="upload-btn">📂 Chọn Ảnh / Video</label>
+            <input type="file" id="fileInput" accept="image/*,video/*" multiple>
+            <p class="hint">Tải ảnh lên → nhấn vào ảnh → nhấn "Sao chép link" → dán ở đâu cũng được!</p>
+        </div>
+        
+        <div class="gallery" id="gallery">
+            <div class="empty" id="emptyMsg">Chưa có ảnh nào, hãy tải ảnh lên nhé! 😊</div>
+        </div>
+    </div>
+    
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <button class="close-btn" id="closeBtn">&times;</button>
+            <img id="modalImg" style="display:none;">
+            <video id="modalVid" controls style="display:none;"></video>
+            <div class="modal-link-area">
+                <input type="text" id="modalLink" class="link-input" readonly>
+                <button class="copy-btn" id="modalCopyBtn">📋 Sao Chép Link</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast" id="toast">✅ Đã sao chép liên kết!</div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const gallery = document.getElementById('gallery');
+        const emptyMsg = document.getElementById('emptyMsg');
+        const modal = document.getElementById('modal');
+        const modalImg = document.getElementById('modalImg');
+        const modalVid = document.getElementById('modalVid');
+        const modalLink = document.getElementById('modalLink');
+        const modalCopyBtn = document.getElementById('modalCopyBtn');
+        const closeBtn = document.getElementById('closeBtn');
+        const toast = document.getElementById('toast');
+        
+        let files = JSON.parse(localStorage.getItem('ngonvlFiles') || '[]');
+        let currentIndex = 0;
+        
+        function renderGallery() {
+            if (files.length === 0) {
+                gallery.innerHTML = '<div class="empty" id="emptyMsg">Chưa có ảnh nào, hãy tải ảnh lên nhé! 😊</div>';
+                return;
+            }
+            gallery.innerHTML = '';
+            files.forEach((file, index) => {
+                const card = document.createElement('div');
+                card.className = 'item-card';
+                card.innerHTML = `
+                    ${file.type.startsWith('image/') 
+                        ? `<img src="${file.data}" alt="${file.name}" onclick="openModal(${index})">`
+                        : `<video src="${file.data}" onclick="openModal(${index})"></video>`
+                    }
+                    <div class="item-info">
+                        <small style="color:#666;word-break:break-all;">${file.name}</small>
+                        <div class="link-box">
+                            <input type="text" class="link-input" value="${file.data}" readonly id="link-${index}">
+                            <button class="copy-btn" onclick="copyLink(${index})">📋 Sao Chép</button>
+                        </div>
+                    </div>
+                `;
+                gallery.appendChild(card);
+            });
+        }
+        
+        fileInput.addEventListener('change', e => {
+            Array.from(e.target.files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = event => {
+                    const newFile = {
+                        name: file.name,
+                        type: file.type,
+                        data: event.target.result
+                    };
+                    files.unshift(newFile);
+                    localStorage.setItem('ngonvlFiles', JSON.stringify(files));
+                    renderGallery();
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+        
+        window.openModal = function(index) {
+            currentIndex = index;
+            const f = files[index];
+            modal.style.display = 'flex';
+            modal.classList.add('show');
+            if (f.type.startsWith('image/')) {
+                modalImg.style.display = 'block';
+                modalVid.style.display = 'none';
+                modalImg.src = f.data;
+            } else {
+                modalImg.style.display = 'none';
+                modalVid.style.display = 'block';
+                modalVid.src = f.data;
+            }
+            modalLink.value = f.data;
+        };
+        
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+            modal.classList.remove('show');
+            modalVid.pause();
+        });
+        
+        modal.addEventListener('click', e => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+                modal.classList.remove('show');
+                modalVid.pause();
+            }
+        });
+        
+        window.copyLink = function(index) {
+            const linkInput = document.getElementById(`link-${index}`);
+            navigator.clipboard.writeText(linkInput.value).then(showToast);
+        };
+        
+        modalCopyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(modalLink.value).then(showToast);
+        });
+        
+        function showToast() {
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+        
+        renderGallery();
+    </script>
+</body>
+  </html>
+  
